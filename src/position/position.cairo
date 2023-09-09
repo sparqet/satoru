@@ -7,7 +7,7 @@
 use starknet::ContractAddress;
 
 /// Main struct used to store positions.
-#[derive(Drop, starknet::Store, Serde)]
+#[derive(Drop, starknet::Store, Serde, PartialEq)]
 struct Position {
     /// The account linked to the position.
     account: ContractAddress,

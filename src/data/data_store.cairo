@@ -4,9 +4,12 @@
 //                                  IMPORTS
 // *************************************************************************
 use core::traits::Into;
+use core::option::OptionTrait;
 use starknet::ContractAddress;
 use satoru::market::market::Market;
 use satoru::order::order::Order;
+use satoru::position::position::Position;
+use satoru::data::error::DataError;
 use satoru::withdrawal::withdrawal::Withdrawal;
 
 // *************************************************************************
@@ -238,6 +241,69 @@ trait IDataStore<TContractState> {
         self: @TContractState, account: ContractAddress, start: u32, end: u32
     ) -> Array<felt252>;
 
+
+    // *************************************************************************
+    //                      Position related functions.
+    // *************************************************************************
+    /// Get a position value for the given key.
+    /// # Arguments
+    /// * `key` - The key to get the value for.
+    /// # Returns
+    /// The value for the given key.
+    fn get_position(self: @TContractState, key: felt252) -> Option<Position>;
+
+    // /// Set a position value for the given key.
+    // /// # Arguments
+    // /// * `key` - The key to set the value for.
+    // /// * `value` - The value to set.
+    fn set_position(ref self: TContractState, key: felt252, position: Position);
+
+    /// Return order index for given key.
+    /// # Arguments
+    /// * `key` - The key to get the index for.
+    fn get_key_index_position(self: @TContractState, key: felt252) -> Option<u64>;
+
+    fn get_account_key_index_position(
+        self: @TContractState, account: ContractAddress, key: felt252
+    ) -> Option<u64>;
+    
+    /// Removes a position value for the given key.
+    /// Sets the position account address to zero.
+    /// # Arguments
+    /// * `key` - The key to set the value for.
+    /// * `account` - The value to set.
+    fn remove_position(ref self: TContractState, key: felt252, account: ContractAddress);
+
+    /// Return total position count
+    fn get_position_count(self: @TContractState) -> u64;
+
+    /// Returns an array of position keys from the stored List of Position.
+    ///
+    /// # Arguments
+    ///
+    /// * `start` - The starting index of the position keys to retrieve.
+    /// * `end` - The ending index of the position keys to retrieve.
+    fn get_position_keys(self: @TContractState, start: u64, end: u64) -> Array<felt252>;
+
+    /// Returns the number of positions made by a specific account.
+    ///
+    /// # Arguments
+    ///
+    /// * `account` - The account address to retrieve the position count for.
+    fn get_account_position_count(self: @TContractState, account: ContractAddress) -> u64;
+
+
+    /// Returns an array of position keys for a specific account, starting from `start` and ending at `end`.
+    ///
+    /// # Arguments
+    ///
+    /// * `account` - The account address to retrieve the position keys for.
+    /// * `start` - The starting index of the position keys to retrieve.
+    /// * `end` - The ending index of the position keys to retrieve.
+    fn get_account_position_keys(
+        self: @TContractState, account: ContractAddress, start: u64, end: u64
+    ) -> Array<felt252>;
+
     //TODO: Update u128 to i128 when Serde and Store for i128 implementations are released.
     // *************************************************************************
     //                          int128 related functions.
@@ -284,6 +350,7 @@ mod DataStore {
 
     // Core lib imports.
     use core::traits::TryInto;
+    use core::option::OptionTrait;
     use starknet::{get_caller_address, ContractAddress, contract_address_const,};
     use nullable::NullableTrait;
     use zeroable::Zeroable;
@@ -295,6 +362,8 @@ mod DataStore {
     use satoru::role::role_store::{IRoleStoreDispatcher, IRoleStoreDispatcherTrait};
     use satoru::market::market::{Market, ValidateMarket};
     use satoru::order::order::Order;
+    use satoru::position::position::Position;
+    use satoru::data::error::DataError;
     use satoru::withdrawal::{withdrawal::Withdrawal, error::WithdrawalError};
 
     // *************************************************************************
@@ -311,6 +380,11 @@ mod DataStore {
         bool_values: LegacyMap::<felt252, Option<bool>>,
         market_values: LegacyMap::<felt252, Market>,
         order_values: LegacyMap::<felt252, Order>,
+        position_values: LegacyMap::<felt252, Position>,
+        position_keys: LegacyMap::<u64, felt252>,
+        position_count: u64,
+        position_account_keys: LegacyMap::<(ContractAddress, u64), felt252>,
+        position_account_count: LegacyMap::<ContractAddress, u64>,
         withdrawals: List<Withdrawal>,
         account_withdrawals: LegacyMap<ContractAddress, List<felt252>>,
         withdrawal_indexes: LegacyMap::<felt252, usize>,
@@ -587,6 +661,185 @@ mod DataStore {
             // Set the value.
             self.market_values.write(key, market);
         }
+
+        // *************************************************************************
+        //                      Withdrawal related functions.
+        // *************************************************************************
+
+        fn get_position(self: @ContractState, key: felt252) -> Option<Position> {
+            let position = self.position_values.read(key);
+
+            // We use the zero address to indicate that the position does not exist.
+            if position.account.is_zero() {
+                Option::None
+            } else {
+                Option::Some(position)
+            }
+        }
+
+        fn set_position(ref self: ContractState, key: felt252, position: Position) {
+            // Check that the caller has permission to set the value.
+            self.role_store.read().assert_only_role(get_caller_address(), role::CONTROLLER);
+
+            let index_result = self.get_key_index_position(key);
+            let account = position.account;
+
+            match index_result {
+                // Update to new position for given key
+                Option::Some(i) => {
+                    // If index exist get_position shouldnt return none
+                    let account_old = self.get_position(key).unwrap().account;
+
+                    // If position account is same only change prev position
+                    // If position account is different remove position from prev account and add it to new
+                    if (account_old != account) {
+                        // Remove position from previous account
+                        let count_old = self.position_account_count.read(account_old);
+                        let index_old = self.get_account_key_index_position(account_old, key).unwrap();
+                        // Move last key to removed index for old account
+                        self
+                            .position_account_keys
+                            .write(
+                                (account_old, index_old),
+                                self.position_account_keys.read((account_old, count_old - 1))
+                            );
+                        self.position_account_keys.write((account_old, count_old - 1), 0);
+                        self.position_account_count.write(account_old, count_old - 1);
+                        // Add to new account
+                        let account_count = self.position_account_count.read(account);
+                        self.position_account_keys.write((account, account_count), key);
+                        self.position_account_count.write(account, account_count + 1);
+                    }
+                    self.position_values.write(key, position);
+                },
+                // Add new position for given key and increase the count
+                Option::None(()) => {
+                    let count = self.position_count.read();
+                    self.position_keys.write(count, key);
+                    self.position_count.write(count + 1);
+                    self.position_values.write(key, position);
+                    let account_count = self.position_account_count.read(account);
+                    self.position_account_keys.write((account, account_count), key);
+                    self.position_account_count.write(account, account_count + 1);
+                },
+            };
+        }
+
+        fn remove_position(ref self: ContractState, key: felt252, account: ContractAddress) {
+            // Check that the caller has permission to set the value.
+            self.role_store.read().assert_only_role(get_caller_address(), role::CONTROLLER);
+
+            let position = self.position_values.read(key);
+            // We use the zero address to indicate that the position does not exist.
+            assert(!position.account.is_zero(), DataError::POSITION_NOT_FOUND);
+
+            let account = position.account;
+            let index_result = self.get_key_index_position(key);
+            let mut index: u64 = 0;
+            match index_result {
+                Option::Some(i) => index = i,
+                Option::None(()) => panic_with_felt252(DataError::POSITION_INDEX_NOT_FOUND),
+            };
+
+            let count = self.position_count.read();
+            // Update removed key index with last key
+            self.position_keys.write(index, self.position_keys.read(count - 1));
+            self.position_keys.write(count - 1, 0);
+            self.position_count.write(count - 1);
+
+            let account_index = self.get_account_key_index_position(account, key).unwrap();
+            let account_count = self.position_account_count.read(account);
+            // Move last key to removed index
+            self
+                .position_account_keys
+                .write(
+                    (account, account_index),
+                    self.position_account_keys.read((account, account_count - 1))
+                );
+            self.position_account_keys.write((account, account_count - 1), 0);
+            self.position_account_count.write(account, account_count - 1);
+        }
+
+        fn get_key_index_position(self: @ContractState, key: felt252) -> Option<u64> {
+            let mut i = 0_u64;
+            let count = self.position_count.read();
+            // Search for key index
+            let result = loop {
+                if (i == count) {
+                    break false;
+                }
+                if (self.position_keys.read(i) == key) {
+                    break true;
+                }
+                i = i + 1;
+            };
+            if result {
+                Option::Some(i)
+            } else {
+                Option::None
+            }
+        }
+
+        fn get_account_key_index_position(
+            self: @ContractState, account: ContractAddress, key: felt252
+        ) -> Option<u64> {
+            let mut i = 0_u64;
+            let count = self.position_account_count.read(account);
+            // Search for key index
+            let result = loop {
+                if (i == count) {
+                    break false;
+                }
+                if (self.position_account_keys.read((account, i)) == key) {
+                    break true;
+                }
+                i = i + 1;
+            };
+            if result {
+                Option::Some(i)
+            } else {
+                Option::None
+            }
+        }
+
+        fn get_position_count(self: @ContractState) -> u64 {
+            self.position_count.read()
+        }
+
+        fn get_account_position_count(self: @ContractState, account: ContractAddress) -> u64 {
+            self.position_account_count.read(account)
+        }
+
+        fn get_position_keys(self: @ContractState, start: u64, end: u64) -> Array<felt252> {
+            let mut keys = ArrayTrait::<felt252>::new();
+            let mut i = start;
+            let count = self.position_count.read();
+            loop {
+                if (i > end || i >= count) {
+                    break;
+                }
+                keys.append(self.position_keys.read(i));
+                i = i + 1;
+            };
+            keys
+        }
+
+        fn get_account_position_keys(
+            self: @ContractState, account: ContractAddress, start: u64, end: u64
+        ) -> Array<felt252> {
+            let mut keys = ArrayTrait::<felt252>::new();
+            let count = self.position_account_count.read(account);
+            let mut i = start;
+            loop {
+                if (i > end || i >= count) {
+                    break;
+                }
+                keys.append(self.position_account_keys.read((account, i)));
+                i = i + 1;
+            };
+            keys
+        }
+
 
         // *************************************************************************
         //                      Order related functions.
