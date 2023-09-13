@@ -17,6 +17,7 @@ use satoru::market::{market::Market, market_utils::MarketPrices};
 use satoru::pricing::swap_pricing_utils::SwapFees;
 use satoru::utils::store_arrays::{StoreContractAddressArray, StoreU128Array};
 use satoru::oracle::oracle::{IOracleDispatcher, IOracleDispatcherTrait};
+use satoru::utils::Span32;
 
 #[derive(Drop, starknet::Store, Serde)]
 struct CreateWithdrawalParams {
