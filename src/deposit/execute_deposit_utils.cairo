@@ -97,7 +97,7 @@ fn _execute_deposit(params: ExecuteDepositParams, _params: _ExecuteDepositParams
 #[inline(always)]
 fn swap(
     params: ExecuteDepositParams,
-    swap_path: Array<ContractAddress>,
+    swap_path: Span32<ContractAddress>,
     initial_token: ContractAddress,
     intput_amount: u128,
     market: ContractAddress,

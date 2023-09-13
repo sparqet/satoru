@@ -78,7 +78,7 @@ struct CreateOrderParams {
     /// The initial collateral token for increase orders.
     initial_collateral_token: ContractAddress,
     /// An array of market addresses to swap through.
-    swap_path: Array<ContractAddress>,
+    swap_path: Span32<ContractAddress>,
     /// The requested change in position size.
     size_delta_usd: u128,
     /// For increase orders, this is the amount of the initialCollateralToken sent in by the user.

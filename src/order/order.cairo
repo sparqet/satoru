@@ -33,7 +33,7 @@ struct Order {
     /// The initial collateral token for increase orders.
     initial_collateral_token: ContractAddress,
     /// An array of market addresses to swap through.
-    // TODO: use Span32 type swap_path: Array<ContractAddress>,
+    swap_path: Span32<ContractAddress>,
     /// The requested change in position size.
     size_delta_usd: u128,
     /// For increase orders, this is the amount of the initialCollateralToken sent in by the user.
@@ -72,7 +72,7 @@ impl DefaultOrder of Default<Order> {
             ui_fee_receiver: 0.try_into().unwrap(),
             market: 0.try_into().unwrap(),
             initial_collateral_token: 0.try_into().unwrap(),
-            // TODO: use Span32 type swap_path: Array<ContractAddress>,
+            swap_path: Span32::Default(),
             size_delta_usd: 0,
             initial_collateral_delta_amount: 0,
             trigger_price: 0,

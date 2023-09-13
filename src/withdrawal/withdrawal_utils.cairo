@@ -181,7 +181,7 @@ fn swap(
     market: Market,
     token_in: ContractAddress,
     amount_in: u128,
-    swap_path: Array<ContractAddress>,
+    swap_path: Span32<ContractAddress>,
     min_output_amount: u128,
     receiver: ContractAddress,
     ui_fee_receiver: ContractAddress,
