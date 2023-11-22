@@ -572,7 +572,7 @@ mod ExchangeRouter {
                 }
                 claimed_amounts
                     .append(
-                        referral_utils::claim_affiliate_reward(
+                        referral_utils.claim_affiliate_reward(
                             data_store,
                             self.event_emitter.read(),
                             *markets[i],
