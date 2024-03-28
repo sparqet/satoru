@@ -21,6 +21,7 @@ use satoru::order::order::{OrderType, DecreasePositionSwapType};
 use satoru::order::base_order_utils;
 use satoru::event::event_emitter::{IEventEmitterDispatcher, IEventEmitterDispatcherTrait};
 use satoru::position::error::PositionError;
+use debug::PrintTrait;
 
 /// Struct used as result for decrease_position_function output.
 #[derive(Drop, Default, Copy, starknet::Store, Serde)]
@@ -73,11 +74,15 @@ fn decrease_position(mut params: UpdatePositionParams) -> DecreasePositionResult
                 );
             params.order.size_delta_usd = params.position.size_in_usd;
         } else {
+            'enter in else'.print();
+            params.order.size_delta_usd.print();
+            params.position.size_in_usd.print();
             PositionError::INVALID_DECREASE_ORDER_SIZE(
                 params.order.size_delta_usd, params.position.size_in_usd
             );
         }
     }
+    '2 inside function decrease'.print();
     // if the position will be partially decreased then do a check on the
     // remaining collateral amount and update the order attributes if needed
     if (params.order.size_delta_usd < params.position.size_in_usd) {
@@ -220,7 +225,8 @@ fn decrease_position(mut params: UpdatePositionParams) -> DecreasePositionResult
 
     cache.initial_collateral_amount = params.position.collateral_amount;
     let (mut values, fees) = decrease_position_collateral_utils::process_collateral(params, cache);
-
+    'values output'.print();
+    values.output.output_amount.print();
     cache.next_position_size_in_usd = params.position.size_in_usd - params.order.size_delta_usd;
     cache
         .next_position_borrowing_factor =
