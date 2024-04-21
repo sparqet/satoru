@@ -211,7 +211,7 @@ fn decrease_position(mut params: UpdatePositionParams) -> DecreasePositionResult
         cache.pnl_token = params.market.short_token;
         cache.pnl_token_price = cache.prices.short_token_price;
     };
-
+    'passed after insde functio'.print();
     if (params.order.decrease_position_swap_type != DecreasePositionSwapType::NoSwap
         && cache.pnl_token == params.position.collateral_token) {
         params.order.decrease_position_swap_type = DecreasePositionSwapType::NoSwap;
@@ -242,7 +242,7 @@ fn decrease_position(mut params: UpdatePositionParams) -> DecreasePositionResult
             market_utils::get_cumulative_borrowing_factor(
                 @params.contracts.data_store, params.market.market_token, params.position.is_long
             );
-
+    'bug here'.print();
     position_utils::update_total_borrowing(
         params, cache.next_position_size_in_usd, cache.next_position_borrowing_factor
     );
